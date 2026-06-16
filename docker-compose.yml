@@ -1,0 +1,95 @@
+version: "3.9"
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  pg_data:
+  broker_data:
+  aggregator_data:
+
+services:
+
+  aggregator:
+    build:
+      context: ./aggregator
+      dockerfile: Dockerfile
+    container_name: aggregator
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgres://struser:strpass@storage:5432/strdb
+      - BROKER_URL=redis://broker:6379
+      - LOG_LEVEL=INFO
+      - NUM_WORKERS=4
+    volumes:
+      - aggregator_data:/app/data
+    networks:
+      - internal
+    depends_on:
+      storage:
+        condition: service_healthy
+      broker:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  publisher:
+    build:
+      context: ./publisher
+      dockerfile: Dockerfile
+    container_name: publisher
+    environment:
+      - AGGREGATOR_URL=http://aggregator:8080
+      - NUM_EVENTS=25000
+      - DUPLICATION_RATE=0.30
+      - BATCH_SIZE=100
+    networks:
+      - internal
+    depends_on:
+      aggregator:
+        condition: service_healthy
+    restart: "no"
+
+  broker:
+    image: redis:7-alpine
+    container_name: broker
+    ports:
+      - "6379:6379"
+    volumes:
+      - broker_data:/data
+    networks:
+      - internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  storage:
+    image: postgres:16-alpine
+    container_name: storage
+    environment:
+      - POSTGRES_DB=strdb
+      - POSTGRES_USER=struser
+      - POSTGRES_PASSWORD=strpass
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./broker/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U struser -d strdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
