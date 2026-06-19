@@ -2,6 +2,13 @@
 
 **Stack**: Python 3.11 · FastAPI · Redis Streams · PostgreSQL 16 · Docker Compose
 
+## Dokumen Terkait
+
+| Dokumen | Deskripsi |
+|---------|-----------|
+| [report.md](report.md) | Laporan UAS (T1–T10, analisis, daftar pustaka APA 7th) |
+| [docs/report.md](docs/report.md) | Salinan laporan di folder docs |
+
 ## Arsitektur
 
 publisher → POST /publish → aggregator (FastAPI) → Redis Streams
@@ -80,7 +87,7 @@ curl http://localhost:8080/stats   # angka sama
 
 ## Laporan
 
-Lihat `report.md`
+- [📄 report.md](report.md) — Laporan UAS T1–T10 + analisis performa + daftar pustaka APA 7th
 
 ## Asumsi & Catatan
 
