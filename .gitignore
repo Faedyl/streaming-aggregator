@@ -8,3 +8,4 @@ dist/
 *.log
 verify.log
 AGENT_BRIEF.md
+verify.sh
