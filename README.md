@@ -146,9 +146,6 @@ classDiagram
     class stats {
         +text key PK
         +bigint value DEFAULT 0
-        +-- 3 rows: received --
-        +-- unique_processed --
-        +-- duplicate_dropped --
     }
 
     class audit_log {
@@ -161,9 +158,9 @@ classDiagram
     }
 
     processed_events "1" --> "0..*" audit_log : topic + event_id
-    note for processed_events: "INSERT ... ON CONFLICT (topic, event_id) DO NOTHING"
-    note for stats: "UPDATE SET value = value + 1 (atomik, bebas lost-update)"
-    note for audit_log: "action = 'inserted' | 'duplicate' | 'error'"
+    note for processed_events: "unique constraint + ON CONFLICT DO NOTHING"
+    note for stats: "UPDATE value = value + 1 (atomic, no lost-update)"
+    note for audit_log: "action: inserted / duplicate / error"
 ```
 
 ---
