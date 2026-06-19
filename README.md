@@ -130,42 +130,6 @@ stateDiagram-v2
 
 ---
 
-## 3. Topologi Jaringan Docker Compose
-
-```mermaid
-flowchart TB
-    HOST["Host Machine\nlocalhost"]
-
-    subgraph BRIDGE["compose_default — bridge network (internal)"]
-        direction TB
-        AGG["aggregator\n:8080"]
-        REDIS["broker  Redis\n:6379  INTERNAL"]
-        PG["storage  PostgreSQL\n:5432  INTERNAL"]
-        PUB["publisher\nprofile: load"]
-        K6["k6\nprofile: load"]
-    end
-
-    HOST -->|"8080:8080  EXPOSED"| AGG
-    AGG  <-->|"redis://broker:6379"| REDIS
-    AGG  <-->|"postgres://storage:5432"| PG
-    PUB  -->|"http://aggregator:8080/publish"| AGG
-    K6   -->|"http://aggregator:8080/publish"| AGG
-
-    NOTE1["broker port 6379 — NOT exposed to host"]
-    NOTE2["storage port 5432 — NOT exposed to host"]
-
-    style HOST  fill:#f8f8f2,color:#282a36,stroke:#6272a4
-    style BRIDGE fill:#282a36,color:#f8f8f2,stroke:#bd93f9
-    style AGG   fill:#bd93f9,color:#282a36
-    style REDIS fill:#ff5555,color:#f8f8f2
-    style PG    fill:#50fa7b,color:#282a36
-    style PUB   fill:#ffb86c,color:#282a36
-    style K6    fill:#8be9fd,color:#282a36
-    style NOTE1 fill:#ff5555,color:#f8f8f2,stroke:#ff5555
-    style NOTE2 fill:#ff5555,color:#f8f8f2,stroke:#ff5555
-```
-
----
 
 ## Cara Menjalankan
 
