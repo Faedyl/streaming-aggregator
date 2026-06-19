@@ -44,6 +44,108 @@ flowchart LR
     K6 -->|"POST /publish\n20k events · 35% dup"| API
 ```
 
+### Alur Publish-Consume (Sequence Diagram)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant PUB as publisher
+    participant AGG as aggregator
+    participant RED as Redis Streams
+    participant CW  as consumer worker
+    participant PG  as PostgreSQL
+
+    PUB  ->> AGG : POST /publish event JSON
+    AGG  ->> RED : XADD events event_json
+    AGG -->> PUB : 202 Accepted
+
+    loop Consumer Group Loop BLOCK 1000ms
+        CW  ->> RED : XREADGROUP GROUP agg consumer-N COUNT 10 BLOCK 1000
+        RED -->> CW : msg_id, event_json
+        CW  ->> PG  : BEGIN TRANSACTION
+        CW  ->> PG  : INSERT processed_events ON CONFLICT DO NOTHING
+        alt Event baru (unique)
+            PG  -->> CW : row inserted
+            CW  ->>  PG : UPDATE stats SET unique_processed += 1
+            CW  ->>  PG : INSERT audit_log action=inserted
+        else Event duplikat
+            PG  -->> CW : no row
+            CW  ->>  PG : UPDATE stats SET duplicate_dropped += 1
+            CW  ->>  PG : INSERT audit_log action=duplicate
+        end
+        CW  ->> PG  : COMMIT
+        CW  ->> RED : XACK events agg msg_id
+    end
+```
+
+### Entity Relationship Diagram
+
+```mermaid
+erDiagram
+    PROCESSED_EVENTS {
+        bigserial   id              PK
+        text        topic           "NOT NULL"
+        text        event_id        "NOT NULL"
+        text        source          "NOT NULL"
+        jsonb       payload         "NOT NULL"
+        timestamptz event_timestamp "NOT NULL"
+        timestamptz received_at     "DEFAULT NOW()"
+    }
+    STATS {
+        text   key   PK  "received | unique_processed | duplicate_dropped"
+        bigint value     "DEFAULT 0"
+    }
+    AUDIT_LOG {
+        bigserial   id         PK
+        timestamptz event_time "DEFAULT NOW()"
+        text        action     "inserted | duplicate | error"
+        text        topic
+        text        event_id
+        jsonb       detail
+    }
+    PROCESSED_EVENTS ||--o{ AUDIT_LOG : "referenced by"
+```
+
+### Siklus Hidup Event
+
+```mermaid
+stateDiagram-v2
+    [*] --> Published : POST /publish
+    Published --> Queued : XADD to Redis Streams
+    Queued --> Processing : XREADGROUP by consumer
+
+    state Processing {
+        [*] --> Inserting
+        Inserting --> Inserted : UNIQUE(topic, event_id)\nbaru
+        Inserting --> Duplicate : ON CONFLICT\nDO NOTHING
+        Inserted --> Commit : UPDATE stats\nunique_processed += 1
+        Duplicate --> Commit : UPDATE stats\nduplicate_dropped += 1
+        Commit --> [*] : XACK + COMMIT
+    }
+
+    Processing --> [*] : Selesai
+```
+
+### Distribusi Poin Verifikasi
+
+```mermaid
+pie title Distribusi Poin verify.sh — Total 100
+    "Struktur File" : 15
+    "Build & Start" : 15
+    "Tests" : 10
+    "Idempotency" : 10
+    "Persistensi" : 10
+    "Compose Syntax" : 5
+    "K6 Script" : 5
+    "Termshot Scripts" : 5
+    "API Endpoints" : 5
+    "Healthz" : 5
+    "Volumes" : 5
+    "Dockerfile Non-root" : 5
+    "Screenshots" : 5
+    "Dokumentasi" : 5
+```
+
 ---
 
 ## Cara Menjalankan
