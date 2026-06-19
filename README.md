@@ -126,24 +126,42 @@ stateDiagram-v2
     Processing --> [*] : Selesai
 ```
 
-### Distribusi Poin Verifikasi
+### Skema Database
 
-```mermaid
-pie title Distribusi Poin verify.sh — Total 100
-    "Struktur File" : 15
-    "Build & Start" : 15
-    "Tests" : 10
-    "Idempotency" : 10
-    "Persistensi" : 10
-    "Compose Syntax" : 5
-    "K6 Script" : 5
-    "Termshot Scripts" : 5
-    "API Endpoints" : 5
-    "Healthz" : 5
-    "Volumes" : 5
-    "Dockerfile Non-root" : 5
-    "Screenshots" : 5
-    "Dokumentasi" : 5
+```sql
+CREATE TABLE IF NOT EXISTS processed_events (
+    id              BIGSERIAL    PRIMARY KEY,
+    topic           TEXT         NOT NULL,
+    event_id        TEXT         NOT NULL,
+    source          TEXT         NOT NULL,
+    payload         JSONB        NOT NULL,
+    event_timestamp TIMESTAMPTZ  NOT NULL,
+    received_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_topic_event UNIQUE (topic, event_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pe_topic    ON processed_events(topic);
+CREATE INDEX IF NOT EXISTS idx_pe_received ON processed_events(received_at DESC);
+
+CREATE TABLE IF NOT EXISTS stats (
+    key   TEXT   PRIMARY KEY,
+    value BIGINT NOT NULL DEFAULT 0
+);
+
+INSERT INTO stats(key, value) VALUES
+    ('received', 0),
+    ('unique_processed', 0),
+    ('duplicate_dropped', 0)
+ON CONFLICT (key) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    id         BIGSERIAL    PRIMARY KEY,
+    event_time TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    action     TEXT         NOT NULL,
+    topic      TEXT,
+    event_id   TEXT,
+    detail     JSONB
+);
 ```
 
 ---
