@@ -1,8 +1,8 @@
 # Laporan UAS Sistem Terdistribusi
 ## Pub-Sub Log Aggregator dengan Idempotent Consumer, Deduplication, dan Transaksi
 
-**Nama**: [Nama Mahasiswa]
-**NIM**: [NIM]
+**Nama**: Fadhil Awalia Kusuma
+**NIM**: 11231023
 **Tanggal**: [Tanggal Submit]
 **Referensi Utama**: Coulouris, G., Dollimore, J., Kindberg, T., & Blair, G. (2012).
   *Distributed systems: Concepts and design* (5th ed.). Addison-Wesley.
