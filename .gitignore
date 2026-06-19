@@ -1,10 +1,10 @@
 __pycache__/
 *.pyc
+*.pyo
 .env
+.pytest_cache/
 *.egg-info/
 dist/
-build/
-.venv/
-venv/
-.pytest_cache/
-.codegraph/
+*.log
+verify.log
+AGENT_BRIEF.md

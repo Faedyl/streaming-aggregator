@@ -1,95 +1,83 @@
 version: "3.9"
 
-networks:
-  internal:
-    driver: bridge
-
-volumes:
-  pg_data:
-  broker_data:
-  aggregator_data:
-
 services:
-
   aggregator:
-    build:
-      context: ./aggregator
-      dockerfile: Dockerfile
-    container_name: aggregator
-    ports:
-      - "8080:8080"
+    build: ./aggregator
+    image: uts-aggregator:latest
     environment:
-      - DATABASE_URL=postgres://struser:strpass@storage:5432/strdb
-      - BROKER_URL=redis://broker:6379
-      - LOG_LEVEL=INFO
-      - NUM_WORKERS=4
-    volumes:
-      - aggregator_data:/app/data
-    networks:
-      - internal
+      DATABASE_URL: postgres://uts:utspass@storage:5432/utsdb
+      REDIS_URL: redis://broker:6379/0
+      CONSUMER_WORKERS: "3"
+      LOG_LEVEL: INFO
     depends_on:
       storage:
         condition: service_healthy
       broker:
-        condition: service_started
-    restart: unless-stopped
+        condition: service_healthy
+    ports:
+      - "8080:8080"
     healthcheck:
       test: ["CMD", "python", "-c",
-             "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=3)"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
+        "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz').read()"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+      start_period: 10s
+    restart: unless-stopped
 
   publisher:
-    build:
-      context: ./publisher
-      dockerfile: Dockerfile
-    container_name: publisher
+    build: ./publisher
+    image: uts-publisher:latest
     environment:
-      - AGGREGATOR_URL=http://aggregator:8080
-      - NUM_EVENTS=25000
-      - DUPLICATION_RATE=0.30
-      - BATCH_SIZE=100
-    networks:
-      - internal
+      TARGET_URL: http://aggregator:8080/publish
+      COUNT: "20000"
+      DUP_RATE: "0.4"
+      BATCH_SIZE: "100"
     depends_on:
       aggregator:
         condition: service_healthy
-    restart: "no"
+    profiles: ["load"]
 
   broker:
     image: redis:7-alpine
-    container_name: broker
-    ports:
-      - "6379:6379"
     volumes:
       - broker_data:/data
-    networks:
-      - internal
-    restart: unless-stopped
+    # TIDAK ada ports: → murni internal
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
+    restart: unless-stopped
 
   storage:
     image: postgres:16-alpine
-    container_name: storage
     environment:
-      - POSTGRES_DB=strdb
-      - POSTGRES_USER=struser
-      - POSTGRES_PASSWORD=strpass
+      POSTGRES_DB: utsdb
+      POSTGRES_USER: uts
+      POSTGRES_PASSWORD: utspass
     volumes:
       - pg_data:/var/lib/postgresql/data
-      - ./broker/init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - internal
-    restart: unless-stopped
+    # TIDAK ada ports: → murni internal
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U struser -d strdb"]
+      test: ["CMD-SHELL", "pg_isready -U uts -d utsdb"]
       interval: 5s
       timeout: 3s
       retries: 10
-      start_period: 10s
+    restart: unless-stopped
+
+  k6:
+    image: grafana/k6:latest
+    volumes:
+      - ./k6:/scripts:ro
+    command: ["run", "/scripts/loadtest.js"]
+    profiles: ["load"]
+    depends_on:
+      aggregator:
+        condition: service_healthy
+    environment:
+      BASE_URL: http://aggregator:8080
+
+volumes:
+  pg_data:
+  broker_data:
