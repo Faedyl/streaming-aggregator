@@ -226,7 +226,7 @@ Named volumes `pg_data` dan `broker_data` hanya dihapus jika eksplisit `docker c
 
 ## Video Demo
 
-🎥 [https://youtube.com/watch?v=LINK_ANDA](https://youtu.be/kgmP2x2D0z0)
+🎥 [https://youtu.be/kgmP2x2D0z0](https://youtu.be/kgmP2x2D0z0)
 
 ---
 
