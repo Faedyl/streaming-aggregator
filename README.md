@@ -7,7 +7,6 @@
 | Dokumen | Deskripsi |
 |---------|-----------|
 | [report.md](report.md) | Laporan UAS (T1–T10, analisis, daftar pustaka APA 7th) |
-| [docs/report.md](docs/report.md) | Salinan laporan di folder docs |
 
 ## Arsitektur
 
