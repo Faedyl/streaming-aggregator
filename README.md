@@ -18,7 +18,7 @@ publisher → POST /publish → aggregator (FastAPI) → Redis Streams
 
 ```bash
 # 1. Clone repo
-git clone https://github.com/[username]/uts-distrib.git
+git clone https://github.com/faedyl/streaming-aggregator.git
 cd uts-distrib
 
 # 2. Jalankan core services
@@ -82,7 +82,6 @@ curl http://localhost:8080/stats   # angka sama
 
 ## Video Demo
 
-🎥 https://youtube.com/watch?v=[LINK_ANDA]
 
 ## Laporan
 
