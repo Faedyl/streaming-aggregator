@@ -5,21 +5,19 @@ from app.main import app
 from app.db import init_db, close_db, get_pool
 from app.config import DATABASE_URL, REDIS_URL, STREAM_NAME, GROUP_NAME
 
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
-
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(autouse=True)
 async def setup_db():
+    """Init DB pool before each test module, clean up after."""
     await init_db()
     yield
-    # cleanup
     pool = get_pool()
-    async with pool.acquire() as conn:
-        await conn.execute("TRUNCATE processed_events, audit_log RESTART IDENTITY")
-        await conn.execute("UPDATE stats SET value=0")
+    if pool:
+        try:
+            async with pool.acquire() as conn:
+                await conn.execute("TRUNCATE processed_events, audit_log RESTART IDENTITY")
+                await conn.execute("UPDATE stats SET value=0")
+        except Exception:
+            pass
     await close_db()
 
 @pytest.fixture
