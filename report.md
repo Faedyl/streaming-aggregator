@@ -87,13 +87,13 @@ Orkestrasi via Docker Compose: `depends_on` + `condition: service_healthy` memas
 
 | Metrik              | Nilai         | Kondisi                           |
 |---------------------|---------------|-----------------------------------|
-| Total event         | 20.000        | 50 VU, 200 iterasi, batch 100     |
+| Total event         | 20.003        | 50 VU, 200 iterasi, batch 100     |
 | Duplikat dikirim    | ~35%          | Pool 500 UUID, DUP_RATE=0.35      |
-| Throughput          | ? req/s       | [isi dari k6 output]              |
-| p95 latency         | ? ms          | [isi dari k6 output]              |
-| Error rate          | ? %           | [isi dari k6 output]              |
-| unique_processed    | ~13.000       | [isi dari GET /stats]             |
-| duplicate_dropped   | ~7.000        | [isi dari GET /stats]             |
+| Throughput          | 136,19 req/s  | Dari k6 output                    |
+| p95 latency         | 506,59 ms     | Threshold terlampaui tipis (500ms)|
+| Error rate          | 0%            | Semua request sukses              |
+| unique_processed    | 19.144        | Dari GET /stats                   |
+| duplicate_dropped   | 859           | Dari GET /stats (4,29%)           |
 
 ---
 
