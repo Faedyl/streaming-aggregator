@@ -135,8 +135,8 @@ stateDiagram-v2
 
 ```bash
 # 1. Clone repo
-git clone https://github.com/[username]/uts-distrib.git
-cd uts-distrib
+git clone https://github.com/faedyl/streaming-aggregator.git
+cd streaming-aggregator
 
 # 2. Jalankan core services
 docker compose up -d --build
