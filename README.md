@@ -128,40 +128,42 @@ stateDiagram-v2
 
 ### Skema Database
 
-```sql
-CREATE TABLE IF NOT EXISTS processed_events (
-    id              BIGSERIAL    PRIMARY KEY,
-    topic           TEXT         NOT NULL,
-    event_id        TEXT         NOT NULL,
-    source          TEXT         NOT NULL,
-    payload         JSONB        NOT NULL,
-    event_timestamp TIMESTAMPTZ  NOT NULL,
-    received_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_topic_event UNIQUE (topic, event_id)
-);
+```mermaid
+classDiagram
+    class processed_events {
+        +bigserial id PK
+        +text topic NOT NULL
+        +text event_id NOT NULL
+        +text source NOT NULL
+        +jsonb payload NOT NULL
+        +timestamptz event_timestamp NOT NULL
+        +timestamptz received_at DEFAULT NOW()
+        +UNIQUE(topic, event_id)
+        +INDEX idx_pe_topic
+        +INDEX idx_pe_received
+    }
 
-CREATE INDEX IF NOT EXISTS idx_pe_topic    ON processed_events(topic);
-CREATE INDEX IF NOT EXISTS idx_pe_received ON processed_events(received_at DESC);
+    class stats {
+        +text key PK
+        +bigint value DEFAULT 0
+        +-- 3 rows: received --
+        +-- unique_processed --
+        +-- duplicate_dropped --
+    }
 
-CREATE TABLE IF NOT EXISTS stats (
-    key   TEXT   PRIMARY KEY,
-    value BIGINT NOT NULL DEFAULT 0
-);
+    class audit_log {
+        +bigserial id PK
+        +timestamptz event_time DEFAULT NOW()
+        +text action NOT NULL
+        +text topic
+        +text event_id
+        +jsonb detail
+    }
 
-INSERT INTO stats(key, value) VALUES
-    ('received', 0),
-    ('unique_processed', 0),
-    ('duplicate_dropped', 0)
-ON CONFLICT (key) DO NOTHING;
-
-CREATE TABLE IF NOT EXISTS audit_log (
-    id         BIGSERIAL    PRIMARY KEY,
-    event_time TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    action     TEXT         NOT NULL,
-    topic      TEXT,
-    event_id   TEXT,
-    detail     JSONB
-);
+    processed_events "1" --> "0..*" audit_log : topic + event_id
+    note for processed_events: "INSERT ... ON CONFLICT (topic, event_id) DO NOTHING"
+    note for stats: "UPDATE SET value = value + 1 (atomik, bebas lost-update)"
+    note for audit_log: "action = 'inserted' | 'duplicate' | 'error'"
 ```
 
 ---
