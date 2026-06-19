@@ -44,115 +44,6 @@ flowchart LR
     K6 -->|"POST /publish\n20k events · 35% dup"| API
 ```
 
-### Poin Desain
-
-| Komponen | Keputusan | Alasan |
-|---|---|---|
-| Broker | Redis Streams | At-least-once native via ACK mechanism |
-| Dedup store | PostgreSQL `UNIQUE(topic, event_id)` | Atomic, tahan restart, ACID |
-| Multi-worker | Redis consumer group (3 consumer) | Distribusi otomatis, tidak double-process |
-| Isolation | `READ COMMITTED` | Cukup dengan UNIQUE constraint, overhead rendah |
-| Persistensi | Named volumes `pg_data`, `broker_data` | Survive `docker compose down` tanpa `-v` |
-
----
-
-## Alur Publish-Consume
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant PUB as publisher
-    participant AGG as aggregator
-    participant RED as Redis Streams
-    participant CW  as consumer worker
-    participant PG  as PostgreSQL
-
-    PUB  ->> AGG : POST /publish { event JSON }
-    AGG  ->> RED : XADD events { event_json }
-    AGG -->> PUB : 202 Accepted { accepted: N }
-
-    loop Consumer Group Loop — BLOCK 1000ms
-        CW  ->> RED : XREADGROUP GROUP agg consumer-N COUNT 10 BLOCK 1000
-        RED -->> CW : msg_id, event_json
-
-        CW  ->> PG  : BEGIN TRANSACTION isolation=read_committed
-        CW  ->> PG  : INSERT processed_events ON CONFLICT (topic, event_id) DO NOTHING RETURNING id
-
-        alt Event baru (unique)
-            PG  -->> CW : RETURNING id  (row inserted)
-            CW  ->>  PG : UPDATE stats SET unique_processed = unique_processed + 1
-            CW  ->>  PG : INSERT audit_log action='inserted'
-        else Event duplikat
-            PG  -->> CW : no row returned
-            CW  ->>  PG : UPDATE stats SET duplicate_dropped = duplicate_dropped + 1
-            CW  ->>  PG : INSERT audit_log action='duplicate'
-        end
-
-        CW  ->> PG  : COMMIT
-        CW  ->> RED : XACK events agg msg_id
-    end
-```
-
----
-
-## Topologi Jaringan
-
-```mermaid
-flowchart TB
-    HOST["Host Machine\nlocalhost"]
-
-    subgraph BRIDGE["compose_default — bridge network (internal)"]
-        direction TB
-        AGG["aggregator\n:8080"]
-        REDIS["broker  Redis\n:6379  INTERNAL"]
-        PG["storage  PostgreSQL\n:5432  INTERNAL"]
-        PUB["publisher\nprofile: load"]
-        K6["k6\nprofile: load"]
-    end
-
-    HOST -->|"8080:8080  EXPOSED"| AGG
-    AGG  <-->|"redis://broker:6379"| REDIS
-    AGG  <-->|"postgres://storage:5432"| PG
-    PUB  -->|"http://aggregator:8080/publish"| AGG
-    K6   -->|"http://aggregator:8080/publish"| AGG
-
-    NOTE1["broker port 6379 — NOT exposed to host"]
-    NOTE2["storage port 5432 — NOT exposed to host"]
-```
-
----
-
-## Skema Database
-
-```mermaid
-erDiagram
-    PROCESSED_EVENTS {
-        bigserial id           PK
-        text      topic        "NOT NULL"
-        text      event_id     "NOT NULL"
-        text      source       "NOT NULL"
-        jsonb     payload      "NOT NULL"
-        timestamptz event_timestamp "NOT NULL"
-        timestamptz received_at     "DEFAULT NOW()"
-    }
-
-    STATS {
-        text   key   PK
-        bigint value     "DEFAULT 0"
-    }
-
-    AUDIT_LOG {
-        bigserial   id         PK
-        timestamptz event_time "DEFAULT NOW()"
-        text        action     "inserted | duplicate | error"
-        text        topic
-        text        event_id
-        jsonb       detail
-    }
-```
-
-**Constraint kunci:** `UNIQUE (topic, event_id)` pada tabel `processed_events` — fondasi dari seluruh mekanisme deduplication.
-
 ---
 
 ## Cara Menjalankan
@@ -187,22 +78,32 @@ curl "http://localhost:8080/events?topic=demo&limit=10"
 
 # 8. Load test (20k event, 35% duplikat)
 docker compose --profile load run --rm k6
-
-# 9. Publisher simulator (20k event @ 40% duplikat)
-docker compose --profile load up publisher
 ```
 
 ## Menjalankan Tests
 
 ```bash
-# Di host (butuh Postgres + Redis running)
-cd aggregator
-pip install -r requirements.txt
-pytest tests/ -v
-
 # Di dalam container
 docker compose run --rm aggregator pytest tests/ -v
 ```
+
+---
+
+## Screenshots (Termshot)
+
+| File                        | Isi                                             |
+|-----------------------------|-------------------------------------------------|
+| `01_compose_services.png`   | `docker compose ps` — semua service running     |
+| `02_healthz.png`            | `GET /healthz` — status OK                      |
+| `03_publish_single.png`     | Publish event baru                              |
+| `04_publish_duplicate.png`  | Duplikat ditolak, stats bertambah               |
+| `05_stats_initial.png`      | Stats baseline                                  |
+| `06_stats_after_load.png`   | Stats setelah load test                         |
+| `07_events_list.png`        | `GET /events` response                          |
+| `08_pytest_results.png`     | 19 tests PASSED                                 |
+| `10_k6_summary.png`         | k6 load test summary                            |
+| `11_persistence_proof.png`  | Bukti data tahan restart                        |
+| `12_concurrency_test.png`   | Race condition test output                      |
 
 ---
 
@@ -214,19 +115,6 @@ docker compose run --rm aggregator pytest tests/ -v
 | `GET` | `/events?topic=X&limit=100` | Daftar event unik yang diproses | `200 [{...}]` |
 | `GET` | `/stats` | Statistik: received, unique, dup, uptime | `200 {"received":N,...}` |
 | `GET` | `/healthz` | Health check DB + broker | `200 {"status":"ok"}` |
-
-### Contoh Response `/stats`
-
-```json
-{
-  "received":          20000,
-  "unique_processed":  13021,
-  "duplicate_dropped":  6979,
-  "topics":               20,
-  "uptime_seconds":     87.4,
-  "duplicate_rate":    0.3490
-}
-```
 
 ---
 
@@ -247,53 +135,15 @@ sleep 10
 curl http://localhost:8080/stats
 ```
 
-Named volumes `pg_data` dan `broker_data` hanya dihapus jika eksplisit `docker compose down -v`. Container recreate biasa tidak menghapus data.
-
----
-
-## Distribusi Tests
-
-Total **19 tests** dalam 6 file:
-
-| # | File | Cakupan |
-|---|------|---------|
-| 1–3 | `test_dedup.py` | Insert baru, duplikat return False, hanya 1 row di DB |
-| 4–7 | `test_api.py` | POST single, POST batch, GET /events, GET /stats fields |
-| 8–10 | `test_concurrency.py` | 50 parallel insert sama, stats no lost-update, no double-process |
-| 11–12 | `test_persistence.py` | Data survive reconnect, duplikat tetap ditolak setelah reconnect |
-| 13–15 | `test_validation.py` | Missing field 422, invalid timestamp 422, empty batch 400/422 |
-| 16–19 | `test_termshot.py` | scripts/ ada, chmod +x, screenshots/ dibuat, PNG magic bytes valid |
+Named volumes `pg_data` dan `broker_data` hanya dihapus jika eksplisit `docker compose down -v`.
 
 ---
 
 ## Video Demo
 
-> Minimal 25 menit, YouTube unlisted atau public.
-
-Cantumkan di sini setelah upload:
-
-```
-Video Demo: https://youtube.com/watch?v=LINK_ANDA
-```
-
-Poin yang harus ditampilkan di video:
-- Arsitektur multi-service dan alasan desain
-- `docker compose up --build` dari nol
-- Kirim event duplikat + bukti idempotency di `/stats`
-- Demonstrasi transaksi/konkurensi (multi-worker) — output test
-- `GET /events` dan `GET /stats` sebelum/sesudah load
-- Crash/recreate container + bukti data persisten via volumes
-- Keamanan jaringan lokal (broker/storage tidak terekspos ke host)
-- Observability: logging, metrik
+🎥 https://youtube.com/watch?v=LINK_ANDA
 
 ---
-
-## Asumsi & Catatan
-
-- Broker (Redis 6379) dan Storage (Postgres 5432) **tidak** di-expose ke host.
-- Named volumes `pg_data` dan `broker_data` survive `docker compose down` (tanpa `-v`).
-- Consumer group Redis: 3 consumer paralel, at-least-once + idempotent dedup.
-- Isolation level: `READ COMMITTED` + UNIQUE constraint.
 
 ## Referensi
 

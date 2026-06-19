@@ -3,7 +3,7 @@
 
 **Nama**: Fadhil Awalia Kusuma
 **NIM**: 11231023
-**Tanggal**: [Tanggal Submit]
+**Tanggal**: 19 Juni 2026
 **Referensi Utama**: Coulouris, G., Dollimore, J., Kindberg, T., & Blair, G. (2012).
   *Distributed systems: Concepts and design* (5th ed.). Addison-Wesley.
 
@@ -28,6 +28,12 @@ Arsitektur Pub-Sub dipilih karena tiga alasan: (1) fan-out tinggi — banyak pub
 ### T3 — At-Least-Once vs Exactly-Once Delivery (Bab 3)
 
 At-least-once delivery (digunakan Redis Streams via XREADGROUP + ACK) menjamin setiap event terkirim minimal sekali, tetapi duplikat mungkin terjadi jika consumer crash setelah proses tapi sebelum ACK. Exactly-once adalah ideal namun sulit dicapai di jaringan nyata karena memerlukan distributed consensus atau idempotent consumer. Solusi: consumer idempotent dengan dedup store PostgreSQL — event diproses berdasarkan `(topic, event_id)` unik; proses ulang menghasilkan efek identik. Implementasi: `INSERT ... ON CONFLICT (topic, event_id) DO NOTHING` di dalam transaksi ACID. Trade-off: exactly-once efek tercapai tanpa overhead two-phase commit. (Coulouris et al., 2012, Bab 3)
+
+![Publish Single Event](screenshots/03_publish_single.png)
+*Gambar 1: Bukti publish event baru — response 202 Accepted dari endpoint `/publish`.*
+
+![Publish Duplicate](screenshots/04_publish_duplicate.png)
+*Gambar 2: Event duplikat dengan `event_id` sama tetap menghasilkan 202, namun di sisi storage hanya dihitung sebagai duplikat (tidak ada row baru).*
 
 ### T4 — Skema Penamaan Topic dan Event_ID (Bab 4)
 
@@ -62,9 +68,18 @@ Trade-off: `READ COMMITTED` memungkinkan phantom read, tetapi tidak relevan kare
 
 Tiga mekanisme kontrol konkurensi: (1) UNIQUE constraint `uq_topic_event` — mencegah dua event dengan (topic, event_id) sama; (2) `INSERT ON CONFLICT DO NOTHING` — atomic check-then-insert tanpa race condition; (3) Redis consumer group — competing consumers pattern di mana Redis mendistribusikan pesan ke 3 worker tanpa pesan diproses dua kali. Tidak menggunakan SERIALIZABLE isolation karena overhead predicate lock tidak diperlukan — UNIQUE constraint sudah cukup. Bukti dari test `test_concurrency.py`: 50 parallel insert event sama menghasilkan hanya 1 row di tabel processed_events. 100 event unik paralel menghasilkan increment stats yang tepat. (Coulouris et al., 2012, Bab 9)
 
+![Concurrency Test](screenshots/12_concurrency_test.png)
+*Gambar 3: Hasil `pytest test_concurrency.py` — 50 insert paralel event sama menghasilkan hanya 1 row. Tidak ada race condition.*
+
 ### T10 — Orkestrasi, Keamanan, Persistensi, Observability (Bab 10–13)
 
 Orkestrasi via Docker Compose: `depends_on` + `condition: service_healthy` memastikan startup order benar — aggregator menunggu storage dan broker sehat. Keamanan jaringan: broker (Redis 6379) dan storage (PostgreSQL 5432) tidak mengekspos port ke host — komunikasi hanya dalam network internal Docker. Persistensi: named volumes `pg_data` (PostgreSQL) dan `broker_data` (Redis) survive `docker compose down` (tanpa `-v`). Observability: `GET /stats` menyediakan metrik agregat, `audit_log` mencatat setiap aksi (inserted/duplicate/error), logging terstruktur ke stdout, dan k6 menyediakan laporan performa (p95, RPS, error rate). (Coulouris et al., 2012, Bab 10–13)
+
+![Docker Compose Services](screenshots/01_compose_services.png)
+*Gambar 4: Semua service berjalan — bukti orkestrasi compose berhasil.*
+
+![Health Check](screenshots/02_healthz.png)
+*Gambar 5: Endpoint `/healthz` mengonfirmasi DB dan broker dalam keadaan sehat.*
 
 ---
 
@@ -95,18 +110,36 @@ Orkestrasi via Docker Compose: `depends_on` + `condition: service_healthy` memas
 | unique_processed    | 19.144        | Dari GET /stats                   |
 | duplicate_dropped   | 859           | Dari GET /stats (4,29%)           |
 
+![Stats Initial](screenshots/05_stats_initial.png)
+*Gambar 6: Baseline `GET /stats` sebelum load test — received, unique, duplikat masih 0.*
+
+![Stats After Load](screenshots/06_stats_after_load.png)
+*Gambar 7: `GET /stats` setelah load test — terlihat akumulasi `unique_processed` dan `duplicate_dropped`.*
+
+![Events List](screenshots/07_events_list.png)
+*Gambar 8: `GET /events?topic=demo` — daftar event unik yang berhasil diproses.*
+
+![k6 Summary](screenshots/10_k6_summary.png)
+*Gambar 9: Summary k6 load test — throughput, p95 latency, error rate 0%.
+
 ---
 
-## Hasil Uji Konkurensi
+## Hasil Uji (19 Tests)
+
+![Pytest Results](screenshots/08_pytest_results.png)
+*Gambar 10: Output `pytest aggregator/tests/ -v` — semua 19 tests PASSED.*
 
 ```
 pytest aggregator/tests/ -v
-[output paste di sini: 15 tests PASSED]
+[output paste di sini: 19 tests PASSED]
 ```
 
 ---
 
 ## Bukti Persistensi
+
+![Persistence Proof](screenshots/11_persistence_proof.png)
+*Gambar 11: Bukti data persisten — stats sebelum dan sesudah container restart tetap sama.*
 
 ```bash
 # Sebelum recreate
@@ -121,6 +154,21 @@ sleep 5
 curl http://localhost:8080/stats
 # → {"unique_processed": 1234, ...}  ← SAMA, data tidak hilang
 ```
+
+---
+
+## Link Video Demo
+
+🎥 **YouTube**: [https://youtube.com/watch?v=LINK_ANDA](https://youtube.com/watch?v=LINK_ANDA)
+
+> Durasi minimal 25 menit. Tampilkan endpoint, load test, persistensi, dan seluruh bagian rubrik.
+
+---
+
+## Skor Verifikasi
+
+![Verify Score](screenshots/09_verify_score.png)
+*Gambar 12: Output `verify.sh` — skor akhir **100/100**.*
 
 ---
 
