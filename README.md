@@ -126,41 +126,43 @@ stateDiagram-v2
     Processing --> [*] : Selesai
 ```
 
-### Skema Database
+
+
+---
+
+## 3. Topologi Jaringan Docker Compose
 
 ```mermaid
-classDiagram
-    class processed_events {
-        +bigserial id PK
-        +text topic NOT NULL
-        +text event_id NOT NULL
-        +text source NOT NULL
-        +jsonb payload NOT NULL
-        +timestamptz event_timestamp NOT NULL
-        +timestamptz received_at DEFAULT NOW()
-        +UNIQUE(topic, event_id)
-        +INDEX idx_pe_topic
-        +INDEX idx_pe_received
-    }
+flowchart TB
+    HOST["Host Machine\nlocalhost"]
 
-    class stats {
-        +text key PK
-        +bigint value DEFAULT 0
-    }
+    subgraph BRIDGE["compose_default — bridge network (internal)"]
+        direction TB
+        AGG["aggregator\n:8080"]
+        REDIS["broker  Redis\n:6379  INTERNAL"]
+        PG["storage  PostgreSQL\n:5432  INTERNAL"]
+        PUB["publisher\nprofile: load"]
+        K6["k6\nprofile: load"]
+    end
 
-    class audit_log {
-        +bigserial id PK
-        +timestamptz event_time DEFAULT NOW()
-        +text action NOT NULL
-        +text topic
-        +text event_id
-        +jsonb detail
-    }
+    HOST -->|"8080:8080  EXPOSED"| AGG
+    AGG  <-->|"redis://broker:6379"| REDIS
+    AGG  <-->|"postgres://storage:5432"| PG
+    PUB  -->|"http://aggregator:8080/publish"| AGG
+    K6   -->|"http://aggregator:8080/publish"| AGG
 
-    processed_events "1" --> "0..*" audit_log : topic + event_id
-    note for processed_events: "unique constraint + ON CONFLICT DO NOTHING"
-    note for stats: "UPDATE value = value + 1 (atomic, no lost-update)"
-    note for audit_log: "action: inserted / duplicate / error"
+    NOTE1["broker port 6379 — NOT exposed to host"]
+    NOTE2["storage port 5432 — NOT exposed to host"]
+
+    style HOST  fill:#f8f8f2,color:#282a36,stroke:#6272a4
+    style BRIDGE fill:#282a36,color:#f8f8f2,stroke:#bd93f9
+    style AGG   fill:#bd93f9,color:#282a36
+    style REDIS fill:#ff5555,color:#f8f8f2
+    style PG    fill:#50fa7b,color:#282a36
+    style PUB   fill:#ffb86c,color:#282a36
+    style K6    fill:#8be9fd,color:#282a36
+    style NOTE1 fill:#ff5555,color:#f8f8f2,stroke:#ff5555
+    style NOTE2 fill:#ff5555,color:#f8f8f2,stroke:#ff5555
 ```
 
 ---
