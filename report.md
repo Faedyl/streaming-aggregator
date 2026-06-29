@@ -159,7 +159,7 @@ curl http://localhost:8080/stats
 
 ## Link Video Demo
 
-🎥 **YouTube**: [https://youtube.com/watch?v=LINK_ANDA](https://youtube.com/watch?v=LINK_ANDA)
+🎥 **YouTube**: [https://youtube.com/watch?v=LINK_ANDA](https://youtu.be/kgmP2x2D0z0)
 
 > Durasi minimal 25 menit. Tampilkan endpoint, load test, persistensi, dan seluruh bagian rubrik.
 
